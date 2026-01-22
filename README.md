@@ -33,3 +33,11 @@ depends on ruling out exponentially many competing numerical possibilities,
 some form of per-candidate distinction must be reflected in the solver’s
 observable behaviour. LR-read makes this requirement explicit, without
 restricting the internal computations a solver may perform.
+
+## Citation
+
+If you use or reference this development, please cite:
+
+Craig Alan Feinstein, *Information-Flow Lower Bounds for SUBSET–SUM*,  
+Zenodo, 2026.  
+DOI: https://doi.org/10.5281/zenodo.18332961
