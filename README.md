@@ -1,3 +1,5 @@
+DOI 10.5281/zenodo.18332961
+
 # SubsetSum
 
 This repository contains a formal Isabelle/HOL development concerning
