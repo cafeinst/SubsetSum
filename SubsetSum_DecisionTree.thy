@@ -905,12 +905,10 @@ For fixed oracles \<open>oL\<close> and \<open>oR\<close> we define:
 
   • \<open>steps_run oL oR T\<close>, the total number of oracle queries.
 
-The key lemma <open>run_agree_on_seen<close> formalises the standard adversary
-principle for decision trees:
-
-if two oracles agree on all values queried during a given run of the tree,
-then replacing one oracle by the other leaves the execution invariant —
-the tree follows the same control path, issues the same queries, and
+The key lemma \<open>run_agree_on_seen\<close> formalises the standard adversary
+principle for decision trees: if two oracles agree on all values queried during a 
+given run of the tree, then replacing one oracle by the other leaves the execution 
+invariant — the tree follows the same control path, issues the same queries, and
 produces the same output.
 
 Accordingly, modifying oracle answers on candidates that are *not queried along
@@ -971,8 +969,9 @@ In this decision-tree model, the query *indices* are not bit positions.
 They are the *numerical candidates themselves*:
   - a left query index i :: int represents the candidate value i ∈ LHS(...),
   - a right query index j :: int represents the candidate value j ∈ RHS(...).
-Thus wf_dtr constrains the tree to ask only about values that can arise from
-the canonical split, not about syntactic positions of an input encoding.
+Thus \<open>wf_dtr\<close> constrains the tree to ask only about values that 
+can arise from the canonical split, not about syntactic positions of an input 
+encoding.
 \<close>
 
 inductive wf_dtr :: "'iL set \<Rightarrow> 'iR set \<Rightarrow> ('iL,'iR) dtr \<Rightarrow> bool" where
@@ -1692,7 +1691,7 @@ end (* end of locale SubsetSum_Reader_Model *)
 section \<open>Interpretation by the decision-tree model\<close>
 
 text \<open>
-We now show that the abstract locale <open>SubsetSum_Reader_Model<close> 
+We now show that the abstract locale \<open>SubsetSum_Reader_Model\<close> 
 can be instantiated by our concrete decision-tree semantics, assuming an 
 explicit coverage (information-flow) axiom.
 
