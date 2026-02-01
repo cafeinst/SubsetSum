@@ -160,7 +160,6 @@ text \<open>We fix two tapes: input (0) and output (1).\<close>
 definition k_tapes :: nat where
   "k_tapes = 2"
 
-
 subsection \<open>Cook--Levin step count and acceptance\<close>
 
 text \<open>
@@ -239,14 +238,13 @@ lemma accept_symbol_is_bit1 [simp]:
   "accept_symbol = (if True then 3 else 2)"
   by (simp add: accept_symbol_def)
 
-definition output_CL :: "machine \<Rightarrow> bool list \<Rightarrow> nat list" where
-  "output_CL M x =
-     (let t   = steps_CL M x;
-          cfg = conf_CL M x t
-      in [ (cfg <:> 1) (cfg <#> 1) ])"
+definition out_symbol_CL :: "machine ⇒ bool list ⇒ symbol" where
+  "out_symbol_CL M x =
+     (let t = steps_CL M x; cfg = conf_CL M x t
+      in |.| (cfg <!> 1))"
 
-definition accepts_CL :: "machine \<Rightarrow> bool list \<Rightarrow> bool" where
-  "accepts_CL M x \<longleftrightarrow> output_CL M x = [accept_symbol]"
+definition accepts_CL where
+  "accepts_CL M x ⟷ out_symbol_CL M x = accept_symbol"
 
 lemma conf_CL_at_steps [simp]:
   "conf_CL M x (steps_CL M x) =
@@ -257,18 +255,32 @@ lemma singleton_list_eq_eq [simp]:
   "([a] = [b]) = (a = b)"
   by simp
 
-lemma accepts_CL_iff_symbol_at_output_head:
-  "accepts_CL M x =
-     (let t = steps_CL M x; cfg = conf_CL M x t
-      in |.| (cfg <!> 1) = accept_symbol)"
-  unfolding accepts_CL_def output_CL_def
-  by (metis list.inject)
+lemma accepts_CL_iff_symbol_at_output_head [simp]:
+  "accepts_CL M x ⟷ out_symbol_CL M x = accept_symbol"
+  by (simp add: accepts_CL_def)
 
-lemma accepts_CL_iff_symbol_at_output_head_iff [simp]:
-  "accepts_CL M x \<longleftrightarrow>
+lemma out_symbol_CL_unfold:
+  "out_symbol_CL M x =
+     (let t = steps_CL M x; cfg = conf_CL M x t in |.| (cfg <!> 1))"
+  by (simp add: out_symbol_CL_def)
+
+lemma accepts_CL_iff_symbol_at_output_head_let:
+  "accepts_CL M x ⟷
      (let t = steps_CL M x; cfg = conf_CL M x t
       in |.| (cfg <!> 1) = accept_symbol)"
-  using accepts_CL_iff_symbol_at_output_head by simp
+proof -
+  have "accepts_CL M x ⟷ out_symbol_CL M x = accept_symbol"
+    by simp
+  also have "... ⟷
+     ((let t = steps_CL M x; cfg = conf_CL M x t in |.| (cfg <!> 1)) = accept_symbol)"
+    by (simp add: out_symbol_CL_def)
+  also have "... ⟷
+     (let t = steps_CL M x; cfg = conf_CL M x t
+      in |.| (cfg <!> 1) = accept_symbol)"
+    (* this is the critical step: normalize let by expanding it *)
+    by (simp add: Let_def)
+  finally show ?thesis .
+qed
 
 definition accepts_CL_halt :: "machine \<Rightarrow> bool list \<Rightarrow> bool" where
   "accepts_CL_halt M x \<longleftrightarrow> halts_CL M x \<and> accepts_CL M x"
@@ -350,7 +362,6 @@ definition subset_sum_true :: "int list \<Rightarrow> int \<Rightarrow> bool" wh
   "subset_sum_true as s \<longleftrightarrow>
      (\<exists>xs \<in> bitvec (length as).
         (\<Sum> i<length as. as ! i * xs ! i) = s)"
-
 
 subsection \<open>Certificate-based view of SUBSET--SUM\<close>
 
@@ -768,247 +779,217 @@ particular, this yields the impossibility of a single polynomial upper
 bound on \verb|steps_TM| over all distinct-subset-sums instances.
 \<close>
 
-locale LR_Read_TM =
+locale LR_Read_TM_Derived =
   CL_SubsetSum_Solver M q0 enc
-  for M   :: machine
-    and q0 :: nat
-    and enc :: "int list \<Rightarrow> int \<Rightarrow> bool list" +
-  fixes steps_TM :: "int list \<Rightarrow> int \<Rightarrow> nat"
-    and seenL_TM :: "int list \<Rightarrow> int \<Rightarrow> nat \<Rightarrow> int set"
-    and seenR_TM :: "int list \<Rightarrow> int \<Rightarrow> nat \<Rightarrow> int set"
-  assumes steps_TM_CL:
-    "\<And>as s. steps_TM as s = steps_CL M (enc as s)"
+  for M :: machine and q0 :: nat and enc :: "int list ⇒ int ⇒ bool list" +
+  fixes isL :: "nat ⇒ bool"
+    and candL_of_pos :: "int list ⇒ int ⇒ nat ⇒ nat ⇒ int"
+    and candR_of_pos :: "int list ⇒ int ⇒ nat ⇒ nat ⇒ int"
   assumes LR_read_coverage:
-    "\<And>as s. distinct_subset_sums as \<Longrightarrow>
-       \<exists>k\<le>length as.
-         seenL_TM as s k = LHS (e_k as s k) (length as) \<and>
-         seenR_TM as s k = RHS (e_k as s k) (length as)"
-  assumes LR_read_cost:
-    "\<And>as s k. k \<le> length as \<Longrightarrow>
-       steps_TM as s \<ge> card (seenL_TM as s k) + card (seenR_TM as s k)"
+    "⋀as s. distinct_subset_sums as ⟹
+       ∃k≤length as.
+         (candL_of_pos as s k ` {i ∈ read0_CL M (enc as s). isL i})
+           = LHS (e_k as s k) (length as) ∧
+         (candR_of_pos as s k ` {i ∈ read0_CL M (enc as s). ¬ isL i})
+           = RHS (e_k as s k) (length as)"
 begin
 
+(* --- Derived Cook–Levin measures specialised to SUBSET–SUM instances --- *)
 
-text \<open>
-We instantiate the abstract lower-bound locale
-\verb|SubsetSum_Reader_Model| with the concrete objects
-\verb|steps_TM|, \verb|seenL_TM|, and \verb|seenR_TM|.
-All theorems proved in \verb|SubsetSum_Reader_Model| then become available
-under the locale interpretation prefix \verb|Reader|.
-\<close>
+definition steps_TM :: "int list ⇒ int ⇒ nat" where
+  "steps_TM as s = steps_CL M (enc as s)"
 
-interpretation Reader:
-  SubsetSum_Reader_Model steps_TM seenL_TM seenR_TM
+definition readL :: "int list ⇒ int ⇒ nat set" where
+  "readL as s = {i ∈ read0_TM as s. isL i}"
+
+definition readR :: "int list ⇒ int ⇒ nat set" where
+  "readR as s = {i ∈ read0_TM as s. ¬ isL i}"
+
+definition seenL_TM :: "int list ⇒ int ⇒ nat ⇒ int set" where
+  "seenL_TM as s k = candL_of_pos as s k ` readL as s"
+
+definition seenR_TM :: "int list ⇒ int ⇒ nat ⇒ int set" where
+  "seenR_TM as s k = candR_of_pos as s k ` readR as s"
+
+
+(* --- Time-witness for membership in read0_CL --- *)
+
+lemma read0_CL_mem_time:
+  assumes "i ∈ read0_CL M x"
+  shows "∃t. t < steps_CL M x ∧ head0_CL (conf_CL M x t) = int i"
+  using assms
+  unfolding read0_CL_def
+  by (auto simp: Let_def)
+
+
+(* --- Cardinality bound: a machine cannot read more input positions than steps --- *)
+
+lemma card_read0_CL_le_steps:
+  shows "card (read0_CL M x) ≤ steps_CL M x"
+proof -
+  let ?S = "read0_CL M x"
+  have finS: "finite ?S"
+    using read0_CL_subset_indices finite_subset by blast
+
+  (* pick the first time each visited cell is visited *)
+  define f where
+    "f i = (LEAST t. t < steps_CL M x ∧ head0_CL (conf_CL M x t) = int i)" for i
+
+  have f_spec:
+    "i ∈ ?S ⟹ f i < steps_CL M x ∧ head0_CL (conf_CL M x (f i)) = int i" for i
+  proof -
+    assume iS: "i ∈ ?S"
+    from read0_CL_mem_time[OF iS]
+    obtain t where t:
+      "t < steps_CL M x" "head0_CL (conf_CL M x t) = int i"
+      by blast
+    have ex: "∃t. t < steps_CL M x ∧ head0_CL (conf_CL M x t) = int i"
+      using t by blast
+    show ?thesis
+      unfolding f_def
+      by (rule LeastI_ex[OF ex])
+  qed
+
+  have inj: "inj_on f ?S"
+  proof (rule inj_onI)
+    fix i j
+    assume iS: "i ∈ ?S" and jS: "j ∈ ?S" and eq: "f i = f j"
+
+    have hi: "head0_CL (conf_CL M x (f i)) = int i"
+      using f_spec[OF iS] by (rule conjunct2)
+
+    have hj: "head0_CL (conf_CL M x (f j)) = int j"
+      using f_spec[OF jS] by (rule conjunct2)
+
+    have hij: "head0_CL (conf_CL M x (f j)) = int i"
+      using hi eq by simp
+
+    have "int i = int j"
+      using hij hj by simp
+    thus "i = j"
+      by simp
+  qed
+
+  have img_sub: "f ` ?S ⊆ {..<steps_CL M x}"
+    using f_spec by auto
+
+  have finT: "finite {..<steps_CL M x}" by simp
+
+  have card_img: "card (f ` ?S) = card ?S"
+    using finS inj by (simp add: card_image)
+
+  have "card ?S = card (f ` ?S)"
+    using card_img by simp
+  also have "... ≤ card {..<steps_CL M x}"
+    using card_mono[OF finT img_sub] .
+  also have "... = steps_CL M x"
+    by simp
+  finally show ?thesis .
+qed
+
+(* --- Derived LR-read cost inequality --- *)
+
+lemma LR_read_cost_derived:
+  "steps_TM as s ≥ card (seenL_TM as s k) + card (seenR_TM as s k)"
+proof -
+  have fin_read0: "finite (read0_TM as s)"
+    unfolding read0_TM_def
+    using read0_CL_subset_indices finite_subset by blast
+
+  have fin_readL: "finite (readL as s)"
+    unfolding readL_def using fin_read0 by auto
+  have fin_readR: "finite (readR as s)"
+    unfolding readR_def using fin_read0 by auto
+
+  have card_seenL_le: "card (seenL_TM as s k) ≤ card (readL as s)"
+    unfolding seenL_TM_def
+    using card_image_le[OF fin_readL] .
+  have card_seenR_le: "card (seenR_TM as s k) ≤ card (readR as s)"
+    unfolding seenR_TM_def
+    using card_image_le[OF fin_readR] .
+
+  have disj: "readL as s ∩ readR as s = {}"
+    unfolding readL_def readR_def by auto
+  have union: "readL as s ∪ readR as s = read0_TM as s"
+    unfolding readL_def readR_def by auto
+
+  have card_partition:
+    "card (readL as s) + card (readR as s) = card (read0_TM as s)"
+  proof -
+    have "card (readL as s ∪ readR as s) = card (readL as s) + card (readR as s)"
+      using fin_readL fin_readR disj
+      by (simp add: card_Un_disjoint)
+    thus ?thesis
+      using union by simp
+  qed
+
+  have card_read0_le_steps:
+    "card (read0_TM as s) ≤ steps_TM as s"
+    unfolding steps_TM_def read0_TM_def
+    using card_read0_CL_le_steps[of "enc as s"] by simp
+
+  have "card (seenL_TM as s k) + card (seenR_TM as s k)
+        ≤ card (readL as s) + card (readR as s)"
+    using card_seenL_le card_seenR_le by linarith
+  also have "... = card (read0_TM as s)"
+    using card_partition by simp
+  also have "... ≤ steps_TM as s"
+    using card_read0_le_steps .
+  finally show ?thesis by linarith
+qed
+
+
+(* --- Import the abstract reader model once (inside the locale) --- *)
+
+interpretation Reader: SubsetSum_Reader_Model steps_TM seenL_TM seenR_TM
 proof
   fix as s
   assume dist: "distinct_subset_sums as"
-  obtain k where
-    k_le: "k \<le> length as"
-    and covL: "seenL_TM as s k = LHS (e_k as s k) (length as)"
-    and covR: "seenR_TM as s k = RHS (e_k as s k) (length as)"
-    using LR_read_coverage[OF dist] by blast
-  have step_ge: "steps_TM as s \<ge> card (seenL_TM as s k) + card (seenR_TM as s k)"
-    using LR_read_cost[OF k_le] .
-  show "\<exists>k\<le>length as.
-          seenL_TM as s k = LHS (e_k as s k) (length as) \<and>
-          seenR_TM as s k = RHS (e_k as s k) (length as) \<and>
-          steps_TM as s \<ge> card (seenL_TM as s k) + card (seenR_TM as s k)"
-    using k_le covL covR step_ge by blast
+
+  from LR_read_coverage[OF dist]
+  obtain k where k_le: "k ≤ length as"
+    and covL': "(candL_of_pos as s k ` {i ∈ read0_CL M (enc as s). isL i})
+                  = LHS (e_k as s k) (length as)"
+    and covR': "(candR_of_pos as s k ` {i ∈ read0_CL M (enc as s). ¬ isL i})
+                  = RHS (e_k as s k) (length as)"
+    by blast
+
+  have covL: "seenL_TM as s k = LHS (e_k as s k) (length as)"
+    unfolding seenL_TM_def readL_def read0_TM_def by (simp add: covL')
+  have covR: "seenR_TM as s k = RHS (e_k as s k) (length as)"
+    unfolding seenR_TM_def readR_def read0_TM_def by (simp add: covR')
+
+  have cost: "steps_TM as s ≥ card (seenL_TM as s k) + card (seenR_TM as s k)"
+    using LR_read_cost_derived .
+
+  show "∃k≤length as.
+          seenL_TM as s k = LHS (e_k as s k) (length as) ∧
+          seenR_TM as s k = RHS (e_k as s k) (length as) ∧
+          steps_TM as s ≥ card (seenL_TM as s k) + card (seenR_TM as s k)"
+    using k_le covL covR cost by blast
 qed
 
-text \<open>
-From this point on, all lower-bound statements are inherited from
-\verb|SubsetSum_Reader_Model| and applied to the Cook--Levin specialised
-cost measures.
-
-In particular, specialising
-\verb|Reader.subset_sum_sqrt_lower_bound| yields the concrete lower bound
-for \verb|steps_TM|.  This is the Turing-machine-level analogue of the
-\(\sqrt{2^n}\) decision-tree lower bound.
-\<close>
+(* --- Typical corollaries now live *inside* the locale --- *)
 
 theorem subset_sum_sqrt_lower_bound_TM:
   fixes as :: "int list" and s :: int and n :: nat
   assumes n_def: "n = length as"
       and distinct: "distinct_subset_sums as"
-  shows "2 * sqrt ((2::real) ^ n) \<le> real (steps_TM as s)"
+  shows "2 * sqrt ((2::real) ^ n) ≤ real (steps_TM as s)"
   using Reader.subset_sum_sqrt_lower_bound[OF distinct n_def]
   by simp
 
 corollary subset_sum_sqrt_lower_bound_CL:
   fixes as :: "int list" and s :: int and n :: nat
   assumes n_def: "n = length as" and distinct: "distinct_subset_sums as"
-  shows "2 * sqrt ((2::real) ^ n) \<le> real (steps_CL M (enc as s))"
+  shows "2 * sqrt ((2::real) ^ n) ≤ real (steps_CL M (enc as s))"
 proof -
-  have lb: "2 * sqrt ((2::real) ^ n) \<le> real (steps_TM as s)"
+  have "2 * sqrt ((2::real) ^ n) ≤ real (steps_TM as s)"
     using subset_sum_sqrt_lower_bound_TM[OF n_def distinct] .
-  have "steps_TM as s = steps_CL M (enc as s)"
-    by (simp add: steps_TM_CL)
-  hence "real (steps_TM as s) = real (steps_CL M (enc as s))"
-    by simp
-  from lb this show ?thesis
-    by simp
+  thus ?thesis
+    by (simp add: steps_TM_def)
 qed
 
-text \<open>
-We now show that no machine satisfying the LR-read assumptions can have its
-step count bounded by a single polynomial over all instances with
-\verb|distinct_subset_sums as|.  The proof combines the analytic lemma
-\verb|exp_beats_poly_ceiling_strict_TM| with the
-\(\sqrt{2^n}\) lower bound and the canonical distinct-subset-sums family
-provided by \verb|exists_distinct_family_TM|.
-
-The scope of this impossibility result is deliberately restricted:
-
-\begin{itemize}
-\item It is stated only for the subfamily of instances satisfying
-      \verb|distinct_subset_sums as|.
-
-\item It does \emph{not} assert that the machine \verb|M| fails to run in
-      polynomial time on arbitrary inputs.  Rather, it rules out the
-      existence of a \emph{single} polynomial bound that holds uniformly
-      over all distinct-subset-sums instances.
-\end{itemize}
-
-This is exactly the quantitative content imported from
-\verb|SubsetSum_DecisionTree| via \verb|SubsetSum_Reader_Model| and the
-LR-read assumptions, and no stronger claim is made.
-\<close>
-
-theorem no_polytime_TM_on_distinct_family:
-  shows "\<not> (\<exists>(c::real)>0. \<exists>(d::nat).
-             \<forall>as s. distinct_subset_sums as \<longrightarrow>
-               steps_TM as s \<le> nat (ceiling (c * (real (length as)) ^ d)))"
-proof
-  assume ex_poly:
-    "\<exists>(c::real)>0. \<exists>(d::nat).
-       \<forall>as s. distinct_subset_sums as \<longrightarrow>
-         steps_TM as s \<le> nat (ceiling (c * (real (length as)) ^ d))"
-  then obtain c d where
-    cpos: "c > 0" and
-    bound: "\<forall>as s. distinct_subset_sums as \<longrightarrow>
-                    steps_TM as s
-                      \<le> nat (ceiling (c * (real (length as)) ^ d))"
-    by blast
-
-  from exp_beats_poly_ceiling_strict_TM[OF cpos]
-  obtain N :: nat where N:
-    "\<forall>n\<ge>N. of_int (ceiling (c * (real n) ^ d))
-           < 2 * sqrt ((2::real) ^ n)"
-    by blast
-
-  have N_ge: "N \<ge> N" by simp
-
-  (* Choose a distinct-subset-sums instance of length N. *)
-  from exists_distinct_family_TM
-  obtain as where len_as: "length as = N"
-    and dist_as: "distinct_subset_sums as"
-    by blast
-
-  from N[rule_format, OF N_ge]
-  have ceil_lt:
-    "of_int (ceiling (c * (real N) ^ d))
-       < 2 * sqrt ((2::real) ^ N)"
-    by simp
-  hence ceil_lt':
-    "of_int (ceiling (c * (real (length as)) ^ d))
-       < 2 * sqrt ((2::real) ^ (length as))"
-    by (simp add: len_as)
-
-  (* Lower bound from the imported \<surd>(2ⁿ) theorem, instantiated at s = 0. *)
-  have lb:
-    "2 * sqrt ((2::real) ^ N) \<le> real (steps_TM as 0)"
-  proof -
-    have "2 * sqrt ((2::real) ^ N) \<le> real (steps_TM as 0)"
-    proof (rule subset_sum_sqrt_lower_bound_TM)
-      show "N = length as"
-        using len_as by simp
-    next
-      show "distinct_subset_sums as"
-        using dist_as .
-    qed
-    thus ?thesis .
-  qed
-
-  (* Polynomial upper bound assumption, instantiated to as, s = 0. *)
-  have ub_nat:
-    "steps_TM as 0 \<le> nat (ceiling (c * (real (length as)) ^ d))"
-    using bound dist_as by simp
-
-  (* Relate \<open>nat \<lceil>\<dots>\<rceil>\<close> and \<open>of_int \<lceil>\<dots>\<rceil>\<close>. *)
-  have nonneg: "0 \<le> c * (real (length as)) ^ d"
-    using cpos by simp
-  hence ceil_ge0: "0 \<le> ceiling (c * (real (length as)) ^ d)"
-    by simp
-  hence conv:
-    "real (nat (ceiling (c * (real (length as)) ^ d)))
-       = of_int (ceiling (c * (real (length as)) ^ d))"
-    by simp
-
-  from ub_nat have ub_real:
-    "real (steps_TM as 0)
-       \<le> of_int (ceiling (c * (real (length as)) ^ d))"
-    using conv by simp
-
-  (* Lower bound, upper bound, and strict separation contradict each other. *)
-  from ceil_lt' lb ub_real
-  show False using len_as by auto
-qed
-
-text \<open>
-The same impossibility result can be restated directly in terms of the
-underlying Cook--Levin step count \verb|steps_CL| on encoded instances.
-This is the CL-level formulation used in the P~$\neq$~NP theory, captured
-by the theorem \verb|no_polytime_CL_on_distinct_family|.
-
-It states that, under the LR-read assumptions, there exists no single
-polynomial that bounds \verb|steps_CL M (enc as s)| uniformly over all
-inputs satisfying \verb|distinct_subset_sums as|.
-\<close>
-
-corollary no_polytime_CL_on_distinct_family:
-  shows "\<not> (\<exists>(c::real)>0. \<exists>(d::nat).
-             \<forall>as s. distinct_subset_sums as \<longrightarrow>
-               steps_CL M (enc as s)
-                 \<le> nat (ceiling (c * (real (length as)) ^ d)))"
-proof
-  assume ex_poly:
-    "\<exists>(c::real)>0. \<exists>(d::nat).
-       \<forall>as s. distinct_subset_sums as \<longrightarrow>
-         steps_CL M (enc as s)
-           \<le> nat (ceiling (c * (real (length as)) ^ d))"
-  then obtain c d where
-    cpos: "c > 0" and
-    bound_CL: "\<forall>as s. distinct_subset_sums as \<longrightarrow>
-                      steps_CL M (enc as s)
-                        \<le> nat (ceiling (c * (real (length as)) ^ d))"
-    by blast
-
-  (* Transfer the polynomial bound from steps_CL to steps_TM using steps_TM_CL. *)
-  have bound_TM:
-    "\<forall>as s. distinct_subset_sums as \<longrightarrow>
-       steps_TM as s \<le> nat (ceiling (c * (real (length as)) ^ d))"
-  proof (intro allI impI)
-    fix as s
-    assume "distinct_subset_sums as"
-    then have "steps_CL M (enc as s)
-                 \<le> nat (ceiling (c * (real (length as)) ^ d))"
-      using bound_CL by simp
-    moreover have "steps_TM as s = steps_CL M (enc as s)"
-      by (simp add: steps_TM_CL)
-    ultimately show "steps_TM as s
-                       \<le> nat (ceiling (c * (real (length as)) ^ d))"
-      by simp
-  qed
-
-  have "\<exists>(c::real)>0. \<exists>(d::nat).
-          \<forall>as s. distinct_subset_sums as \<longrightarrow>
-            steps_TM as s \<le> nat (ceiling (c * (real (length as)) ^ d))"
-    using cpos bound_TM by blast
-  with no_polytime_TM_on_distinct_family show False
-    by blast
-qed
-
-end  (* locale LR_Read_TM *)
+end
 
 end  (* theory *)
