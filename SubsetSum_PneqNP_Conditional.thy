@@ -155,10 +155,10 @@ This per-candidate requirement is exactly what drives the abstract reader
 lower bound proved earlier.
 \<close>
 
-section \<open>Why LR_read is Assumed Rather than Proved\<close>
+section \<open>Why LR_read is assumed rather than proved\<close>
 
 text \<open>
-A natural question is why the predicate \<open>LR_read\<close> is not derived
+A natural question is why the predicate \verb|LR_read| is not proved
 directly from the Cook--Levin Turing-machine semantics.
 
 The reason is conceptual.
@@ -182,10 +182,10 @@ distinctions visible at the computational level.
 
 Since the Cook--Levin semantics guarantee correctness of the final
 decision but do not enforce any explicit exposure of these candidate
-values, the property captured by \<open>LR_read\<close> does not follow
-automatically from the execution model.
+values, the property captured by \verb|LR_read| does not follow 
+from the execution model alone.
 
-For this reason, \<open>LR_read\<close> is introduced explicitly as a
+For this reason, \verb|LR_read| is introduced explicitly as a
 modelling assumption.  It expresses an additional principle linking
 correct computation of SUBSET-SUM to explicit distinction among the
 split-induced candidate values, a property not mandated by the
